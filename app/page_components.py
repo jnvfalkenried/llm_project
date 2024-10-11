@@ -42,4 +42,9 @@ def add_common_page_elements():
 
     page_selector_container.divider()
 
-    return page_selector_container 
+    return page_selector_container
+
+def create_chat(to_hash, chat_class, *args, **kwargs):
+    chat_hash_state = hash(to_hash)
+    chat = chat_class(chat_hash_state, *args, **kwargs)
+    return chat

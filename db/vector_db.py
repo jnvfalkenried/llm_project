@@ -11,10 +11,10 @@ app = Flask(__name__)
 
 # API
 if "GOOGLE_API_KEY" not in os.environ:
-    os.environ["GOOGLE_API_KEY"] = "AIzaSyCNwMElBNoM1CD6cPe_KOft4EKms575LB0"
+    print("Please set the GOOGLE_API_KEY environment variable")
 
 # Opening JSON data file
-with open('data/movie_data.json', 'r') as file:
+with open('/data/movie_data.json', 'r') as file:
     movie_data = json.load(file)
 
 # Preparing the data
@@ -58,8 +58,6 @@ vector_store.add_texts(page_contents, metadatas=metadatas)
 def search():
     data = request.json
     app.logger.info(f"Received data: {data}")
-    app.logger.info(type(data['query']))
-    app.logger.info(data['query'])
     results = vector_store.similarity_search(data['query'], k=10)
 
     results_serializable = [

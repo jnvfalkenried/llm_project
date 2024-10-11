@@ -2,22 +2,25 @@ services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile-app
+      dockerfile: ./app/Dockerfile
     ports:
       - "8501:8501"
-    healthcheck:          # Healthcheck to ensure the app is running
-      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     depends_on:
       - vector_db
     environment:
       - VECTOR_DB_URL=vector_db:5000
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    volumes:
+      - ./app:/app
 
   vector_db:
     build:
-      context: .
-      dockerfile: Dockerfile-db
+      context: ./
+      dockerfile: ./db/Dockerfile
     ports:
       - "5000:5000"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    volumes:
+      - ./db:/db
+      - ./data:/data
