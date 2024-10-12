@@ -1,9 +1,8 @@
 from flask import Flask, request, jsonify, Response
-import faiss
 import numpy as np
 import json
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.vectorstores import FAISS
+from langchain_chroma import Chroma
 from langchain_community.docstore.in_memory import InMemoryDocstore
 import os
 
@@ -36,7 +35,7 @@ Review:
     # Store relevant metadata
     metadata = {
         'title': movie['title'],
-        'genres': movie['genres'],
+        'genres': ', '.join(movie['genres']),
         'rating': movie['rating']
     }
     metadatas.append(metadata)
@@ -47,11 +46,13 @@ Review:
 # Embedding model
 embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
-# Initialize the FAISS index (you may want to save/load this from a persistent store)
-dimension = 768
-index = faiss.IndexFlatL2(dimension)
-vector_store = FAISS(embedding_model, index, InMemoryDocstore(),{})
-vector_store.add_texts(page_contents, metadatas=metadatas)
+# Creating Chroma vector store
+vector_store = Chroma(embedding_function=embedding_model, persist_directory='chroma_persistence')
+
+# Check if the vector store has already been persisted
+if vector_store._collection.count() == 0:
+    # Adding embeddings to the vector store
+    vector_store.add_texts(texts=page_contents, metadatas=metadatas)
 
 
 @app.route('/search', methods=['POST'])

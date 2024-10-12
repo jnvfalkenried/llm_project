@@ -18,7 +18,7 @@ services:
       context: ./
       dockerfile: ./db/Dockerfile
     ports:
-      - "5000:5000"
+      - "5001:5000"
     environment:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
     volumes:
