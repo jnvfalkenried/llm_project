@@ -3,8 +3,7 @@ import numpy as np
 import json
 import os
 import getpass
-import faiss
-from langchain_community.vectorstores import FAISS
+from langchain_chroma import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -20,7 +19,7 @@ with open('data/movie_data.json', 'r') as file:
 # Preparing the data
 page_contents = []
 metadatas = []
-for movie in movie_data:
+for movie in movie_data[0:30]:
     # Title, plot and review are set as "page content"
     page_content = f"Title: {movie['title']}. Plot: {movie['plot']}. Review: {movie['review']}"
     page_contents.append(page_content)
@@ -28,7 +27,7 @@ for movie in movie_data:
     # Store relevant metadata
     metadata = {
         'title': movie['title'],
-        'genres': movie['genres'],
+        'genres': ', '.join(movie['genres']),  # Convert the list to a comma-separated string
         'rating': movie['rating']
     }
     metadatas.append(metadata)
@@ -43,10 +42,18 @@ llm = ChatGoogleGenerativeAI(
 # Embedding model
 embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
+# Creating Chroma vector store
+vector_store = Chroma(embedding_function=embedding_model, persist_directory='chroma_persistence')
+
+# Check if the vector store has already been persisted
+if vector_store._collection.count() == 0:
+    # Adding embeddings to the vector store
+    vector_store.add_texts(texts=page_contents, metadatas=metadatas)
+
 # Creating FAISS database and embedding data
-index = faiss.IndexFlatL2(768)
-vector_store = FAISS(embedding_model, index, InMemoryDocstore(),{})
-vector_store.add_texts(page_contents, metadatas=metadatas)
+#index = faiss.IndexFlatL2(768)
+#vector_store = FAISS(embedding_model, index, InMemoryDocstore(),{})
+#vector_store.add_texts(page_contents, metadatas=metadatas)
 
 # Extracting semantic metadata from user query
 user_query = "I want to watch a barbie movie with a rating over 6"
@@ -88,7 +95,7 @@ filtered_movies = filter_results(results, filter_criteria)
 
 # Formatting input string to LLM
 input_movies = []
-for movie in filtered_movies:
+for movie in filtered_movies[:4]:
     temp_string = str(movie.metadata) + movie.page_content
     input_movies.append(temp_string)
 input_prompt = """ Please summarize each of the movies given to you at the end of the prompt in a 
@@ -104,3 +111,5 @@ input_prompt = """ Please summarize each of the movies given to you at the end o
 final_response = llm.invoke(input_prompt)
 
 print(final_response.content)
+
+print(len(filtered_movies))
