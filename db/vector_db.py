@@ -1,12 +1,14 @@
-from flask import Flask, request, jsonify, Response
-import numpy as np
+from flask import Flask, request, Response
 import json
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_chroma import Chroma
-from langchain_community.docstore.in_memory import InMemoryDocstore
 import os
+import numpy as np
+import logging
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
+app.logger.setLevel(logging.INFO)
 
 # API
 if "GOOGLE_API_KEY" not in os.environ:
@@ -19,7 +21,7 @@ with open('/data/movie_data.json', 'r') as file:
 # Preparing the data
 page_contents = []
 metadatas = []
-i = 0
+
 for movie in movie_data:
     # Title, plot and review are set as "page content"
     page_content = f"""Title: 
@@ -39,27 +41,74 @@ Review:
         'rating': movie['rating']
     }
     metadatas.append(metadata)
-    i += 1
-    if i == 10:
-        break
 
 # Embedding model
-embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001", task_type="retrieval_document")
 
 # Creating Chroma vector store
 vector_store = Chroma(embedding_function=embedding_model, persist_directory='chroma_persistence')
 
+app.logger.info(f"Vector store doc count: {vector_store._collection.count()}")
 # Check if the vector store has already been persisted
 if vector_store._collection.count() == 0:
     # Adding embeddings to the vector store
     vector_store.add_texts(texts=page_contents, metadatas=metadatas)
 
+# Set new embedding model for the vector store
+vector_store._embedding_function = GoogleGenerativeAIEmbeddings(model="models/embedding-001", task_type="retrieval_query")
+
+all_genres = [x['genres'].split(', ') for x in vector_store.get()['metadatas']]
+all_genres = set([item for sublist in all_genres for item in sublist])
+
+llm = ChatGoogleGenerativeAI(
+    model="gemini-1.5-flash",
+    system_instruction="Please always answer in JSON format as ask in the prompt.", 
+    temperature=0,
+)
+
+
+def get_filter(query):
+    json_input_prompt = """Please take this following user query and generate a raw JSON response of this format without markdown formatting:
+                {
+                  "genres": "list of genres the user requests, do not generate a string here only a list, select multiple from the following genres: """ + ', '.join(all_genres) + """",
+                  "rating": "a rating range that the user requests in the format of lower bound",
+                }
+                If no rating is given, please set it to 0.
+                User query:""" + query
+    json_response = llm.invoke(json_input_prompt)
+    filter_json = json.loads(json_response.content)
+
+    filter_criteria = {
+        '$and': [
+            {
+                'genres': {
+                    '$in': filter_json['genres']
+                }
+            },
+            {
+                'rating': {
+                    '$in': [
+                        str(round(i, 1)) for i in np.linspace(
+                            filter_json['rating'],
+                            10,
+                            (10 - filter_json['rating']) * 10,
+                            endpoint=True
+                        )
+                    ]
+                }
+            }
+        ]
+    }
+    
+    return filter_criteria
 
 @app.route('/search', methods=['POST'])
 def search():
     data = request.json
     app.logger.info(f"Received data: {data}")
-    results = vector_store.similarity_search(data['query'], k=10)
+    filter_criteria = get_filter(data['query'])
+    app.logger.info(f"Filter criteria: {filter_criteria}")
+    results = vector_store.similarity_search(data['query'], k=10, filter=filter_criteria)
 
     results_serializable = [
         {   
@@ -67,6 +116,7 @@ def search():
             'content': doc.page_content
         } for doc in results
     ]
+    # app.logger.info(f"Returning results: {results_serializable}")
 
     return Response(json.dumps(results_serializable), mimetype='application/json')
 

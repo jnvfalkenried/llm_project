@@ -39,11 +39,29 @@ class Chat:
         self.messages_to_display = st.session_state.messages_to_display
         self.state = st.session_state.chat_state
     
-    def instruction_messages(self):
+    def instruction_messages(self, mode="default"):
         """
         Sets up the instructions to the agent. Should be overridden by subclasses.
         """
-        return []
+        match mode:
+            case "default":
+                instructions = "You are a movie expert. Only answer movie related questions."
+            case "filter":
+                instructions = "Is this a movie related question? Answer with yes or no."
+            case "recommend":
+                instructions = """Please summarize each of the movies given to you at the end of the prompt in a 
+                    bullet point list as a recommendation to the user. 
+                    Each entry in the list is a separate movie. 
+                    Answer as if you are recommending the movies based on a request from the user. 
+                    Always mention the title and rating of the movies.
+                    Also briefly mention what the users said about the movie, you can find this in the "review" field.
+                    If no movies are given to you below, just say that no movies fit the users request.
+                    
+                    ´´´Movie list: ´´´"""
+            case _:
+                raise(ValueError("Invalid mode."))
+        
+        return [{"role": "system", "content": instructions}]
 
     def add_message(self, content, role="assistant", user_only=True, visible = True):
         """
@@ -82,12 +100,11 @@ class Chat:
         self.messages_to_display.append({"role": "user", "content": input})
 
         # This is for seeing what the response from the RAG is
-        self.messages_to_display.append({"role": "system", "content": get_relevant_info})
-        
-        # TODO: We get a list of dictionaries in get_relevant_info. We need to convert this to a string.
-        # TODO: How do we want to add the relevant information to the messages?
-        # TODO: Do we want to add the relevant information to the display messages?
-        messages.append({"role": "user", "content": f"Here is the relevant information to answer the users query: {get_relevant_info}\n\n```User: {input}```"})
+        # self.messages_to_display.append({"role": "system", "content": get_relevant_info})
+
+        summarize_prompt = self.instruction_messages("recommend")[0]["content"] + str(get_relevant_info) + "\n\n```User: " + input + "```"
+
+        messages.append({"role": "user", "content": summarize_prompt})
 
         # Remove all items in messages where content is not a string
         messages = [message for message in messages if isinstance(message["content"], str)]
@@ -100,7 +117,7 @@ class Chat:
 
         model = genai.GenerativeModel(
             model_name="gemini-1.5-flash",
-            system_instruction="You are a movie expert. Only answer movie related questions.", 
+            system_instruction=converted_msgs["system_instruction"], 
             generation_config=genai.types.GenerationConfig(
                 temperature=0,
             )
@@ -174,7 +191,9 @@ class Chat:
         """
         Extracts relevant information from the user input.
         """
-        # TODO: Make this more error proof!
         url = "http://" + os.getenv("VECTOR_DB_URL") + "/search"
-        response = requests.post(url, json={"query": input})
-        return response.json()
+        try:
+            response = requests.post(url, json={"query": input})
+            return response.json()
+        except:
+            return "An error occurred when calling the RAG. Please try again later."
