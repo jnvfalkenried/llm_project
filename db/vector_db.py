@@ -38,7 +38,8 @@ Review:
     metadata = {
         'title': movie['title'],
         'genres': ', '.join(movie['genres']),
-        'rating': movie['rating']
+        'rating': movie['rating'],
+        'type': movie['type']
     }
     metadatas.append(metadata)
 
@@ -72,10 +73,13 @@ def get_filter(query):
                 {
                   "genres": "list of genres the user requests, do not generate a string here only a list, select multiple from the following genres: """ + ', '.join(all_genres) + """",
                   "rating": "a rating range that the user requests in the format of lower bound",
+                  "type": "a list of type of content that the user requests, select one from the following: [movie, tvSeries]"
                 }
                 If no rating is given, please set it to 0.
+                If no type is given, please set it to ["movie", "tvSeries"].
                 User query:""" + query
     json_response = llm.invoke(json_input_prompt)
+    app.logger.info(f"JSON response: {json_response.content}")
     filter_json = json.loads(json_response.content)
 
     filter_criteria = {
@@ -89,12 +93,17 @@ def get_filter(query):
                 'rating': {
                     '$in': [
                         str(round(i, 1)) for i in np.linspace(
-                            filter_json['rating'],
+                            int(filter_json['rating']),
                             10,
-                            (10 - filter_json['rating']) * 10,
+                            (10 - int(filter_json['rating'])) * 10,
                             endpoint=True
                         )
                     ]
+                }
+            },
+            {
+                'type': {
+                    '$in': filter_json['type']
                 }
             }
         ]
@@ -108,8 +117,12 @@ def search():
     app.logger.info(f"Received data: {data}")
     filter_criteria = get_filter(data['query'])
     app.logger.info(f"Filter criteria: {filter_criteria}")
-    results = vector_store.similarity_search(data['query'], k=10, filter=filter_criteria)
-
+    try:
+        results = vector_store.similarity_search(data['query'], k=10, filter=filter_criteria)
+    except Exception as e:
+        app.logger.error(f"Error: {e}")
+        return Response(json.dumps([]), mimetype='application/json')
+    
     results_serializable = [
         {   
             'metadata': doc.metadata,
