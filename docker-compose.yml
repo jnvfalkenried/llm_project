@@ -1,0 +1,26 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: ./app/Dockerfile
+    ports:
+      - "8501:8501"
+    depends_on:
+      - vector_db
+    environment:
+      - VECTOR_DB_URL=vector_db:5000
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    volumes:
+      - ./app:/app
+
+  vector_db:
+    build:
+      context: ./
+      dockerfile: ./db/Dockerfile
+    ports:
+      - "5001:5000"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    volumes:
+      - ./db:/db
+      - ./data:/data
