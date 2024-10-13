@@ -3,6 +3,13 @@ import google.generativeai as genai
 from itertools import groupby
 import os
 import requests
+import logging
+from PIL import Image
+import tempfile
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def convert_messages_format(messages):
     new_messages = []
@@ -55,18 +62,35 @@ class Chat:
     def get_input(self):
         """
         Get input from streamlit."""
-  
         if x := st.chat_input(placeholder=f"What else would you like to know?"):
             if len(x) > 500:
                 st.error(f"Your message is too long ({len(x)} characters). Please keep it under 500 characters.")
+        
+        uploaded_image = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"], 
+                                          label_visibility="collapsed")
+  
+        image_path = None
+        if uploaded_image is not None:
+            # Save the uploaded image to a temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
+                img = Image.open(uploaded_image)
+                img.save(tmp_file, format="PNG")
+                image_path = tmp_file.name  # Get the temporary file path
 
-            self.handle_input(x)
-                
+            # Display the uploaded image in the chat interface
+            st.image(img, caption="Uploaded Image", use_column_width=True)
 
-    def handle_input(self, input):
+            # logger.info('streamlit789')
+            # logger.info(input)
+        if x:
+            self.handle_input(x, image_path)            
+        
+    def handle_input(self, input, image_path=None):
         """
         The main function that calls the Gemini API and processes the response.
         """
+        logger.info('streamlit789 handle image path')
+        logger.info(image_path)
 
         # Get the instruction messages. 
         messages = self.instruction_messages()
@@ -76,8 +100,38 @@ class Chat:
 
         # Get relevent information from the user input and then generate a response.
         # This is not added to messages_to_display as it is not a message from the assistant.
-        get_relevant_info = self.get_relevant_info(input)
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction="You are a movie expert. Only answer movie related questions.", 
+            generation_config=genai.types.GenerationConfig(
+                temperature=0,
+            )
+        )
 
+        if image_path:
+            try:
+                myfile = genai.upload_file(image_path)  # Upload the image file
+                st.write("Image uploaded successfully!")
+                image_query = model.generate_content(
+                    [myfile, "Capture the text from the image and translate into english and give me only main information like title?"]
+                )
+                image_query = image_query._result.candidates[0].content.parts[0].text.replace('\n', ' ')
+                logger.info('streamlit123')
+                logger.info(image_query)
+
+            except Exception as e:
+                st.error(f"Image upload failed: {e}")
+                return
+        else:
+            image_query = ''
+
+        logger.info('streamlit456')
+        if input is None:
+            input = ''
+        logger.info(input)
+
+        input = input + ' and ' +image_query
+        get_relevant_info = self.get_relevant_info(input)
         # Now add the user input to the messages. Don't add system information and system messages to messages_to_display.
         self.messages_to_display.append({"role": "user", "content": input})
 
@@ -98,13 +152,6 @@ class Chat:
         # Check if use gemini is set to true
         converted_msgs = convert_messages_format(messages)
 
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            system_instruction="You are a movie expert. Only answer movie related questions.", 
-            generation_config=genai.types.GenerationConfig(
-                temperature=0,
-            )
-        )
         chat = model.start_chat(history=converted_msgs["history"])
         response = chat.send_message(content=converted_msgs["content"])
 
