@@ -1,9 +1,8 @@
 from flask import Flask, request, jsonify, Response
-import faiss
 import numpy as np
 import json
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.vectorstores import FAISS
+from langchain_chroma import Chroma
 from langchain_community.docstore.in_memory import InMemoryDocstore
 import os
 
@@ -11,10 +10,10 @@ app = Flask(__name__)
 
 # API
 if "GOOGLE_API_KEY" not in os.environ:
-    os.environ["GOOGLE_API_KEY"] = "AIzaSyCNwMElBNoM1CD6cPe_KOft4EKms575LB0"
+    print("Please set the GOOGLE_API_KEY environment variable")
 
 # Opening JSON data file
-with open('data/movie_data.json', 'r') as file:
+with open('/data/movie_data.json', 'r') as file:
     movie_data = json.load(file)
 
 # Preparing the data
@@ -36,7 +35,7 @@ Review:
     # Store relevant metadata
     metadata = {
         'title': movie['title'],
-        'genres': movie['genres'],
+        'genres': ', '.join(movie['genres']),
         'rating': movie['rating']
     }
     metadatas.append(metadata)
@@ -47,19 +46,19 @@ Review:
 # Embedding model
 embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
-# Initialize the FAISS index (you may want to save/load this from a persistent store)
-dimension = 768
-index = faiss.IndexFlatL2(dimension)
-vector_store = FAISS(embedding_model, index, InMemoryDocstore(),{})
-vector_store.add_texts(page_contents, metadatas=metadatas)
+# Creating Chroma vector store
+vector_store = Chroma(embedding_function=embedding_model, persist_directory='chroma_persistence')
+
+# Check if the vector store has already been persisted
+if vector_store._collection.count() == 0:
+    # Adding embeddings to the vector store
+    vector_store.add_texts(texts=page_contents, metadatas=metadatas)
 
 
 @app.route('/search', methods=['POST'])
 def search():
     data = request.json
     app.logger.info(f"Received data: {data}")
-    app.logger.info(type(data['query']))
-    app.logger.info(data['query'])
     results = vector_store.similarity_search(data['query'], k=10)
 
     results_serializable = [

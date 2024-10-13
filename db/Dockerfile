@@ -2,16 +2,16 @@
 FROM python:3.10-slim
 
 # Set the working directory
-WORKDIR /app
+WORKDIR /db
 
 # Copy the source code
-COPY . .
+COPY ./db/requirements.txt .
 
 # Install required libraries
-RUN pip install -r db/requirements.txt
+RUN pip install -r requirements.txt
 
 # Expose the API port (change if needed)
 EXPOSE 5000
 
 # Command to run the application
-ENTRYPOINT ["python", "db/vector_db.py"]
+ENTRYPOINT ["python", "vector_db.py"]
