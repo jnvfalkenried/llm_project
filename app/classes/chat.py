@@ -38,7 +38,10 @@ class Chat:
         # Set session states as attributes for easier access
         self.messages_to_display = st.session_state.messages_to_display
         self.state = st.session_state.chat_state
-    
+ 
+    def clear_state(self):
+        self.messages_to_display = []  # Clear the messages
+   
     def instruction_messages(self, mode="default"):
         """
         Sets up the instructions to the agent. Should be overridden by subclasses.
@@ -79,58 +82,122 @@ class Chat:
                 st.error(f"Your message is too long ({len(x)} characters). Please keep it under 500 characters.")
 
             self.handle_input(x)
-                
+
+    def check_input_question(self, input):
+        """
+        Send a request to Gemini to classify if the user input is movie-related or not.
+        """
+        # Get the last few messages from history for context (e.g., last 3 messages)
+        history = self.messages_to_display[-1:]
+
+        # Construct the prompt using the history and the new input
+        precheck_message = [
+            {"role": "system", "content": "Does this query relate to movies? Respond with either 'yes' or 'no'."},
+        ] + history + [{"role": "user", "content": input}]  # Add input as the last message
+
+        # Format the messages for the model
+        converted_msgs = convert_messages_format(precheck_message)
+
+        # Initialize the Gemini model
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction="You are a classifier. Answer with 'yes' or 'no' based on whether the query is related to movie recommendation only. Use previous context to inform your decision.",
+            generation_config=genai.types.GenerationConfig(temperature=0)
+        )
+
+        # Start the chat and send the messages for classification
+        chat = model.start_chat(history=converted_msgs["history"])
+        response = chat.send_message(content=converted_msgs["content"])
+
+        return response.text.strip().lower()  # Return 'yes' or 'no' based on classification
 
     def handle_input(self, input):
         """
         The main function that calls the Gemini API and processes the response.
         """
 
-        # Get the instruction messages. 
+        # Get the instruction messages.
         messages = self.instruction_messages()
 
         # Add a copy of the user messages. This is to give the assistant some context.
         messages = messages + self.messages_to_display.copy()
 
-        # Get relevent information from the user input and then generate a response.
-        # This is not added to messages_to_display as it is not a message from the assistant.
-        get_relevant_info = self.get_relevant_info(input)
-
-        # Now add the user input to the messages. Don't add system information and system messages to messages_to_display.
-        self.messages_to_display.append({"role": "user", "content": input})
-
-        # This is for seeing what the response from the RAG is
-        # self.messages_to_display.append({"role": "system", "content": get_relevant_info})
-
-        summarize_prompt = self.instruction_messages("recommend")[0]["content"] + str(get_relevant_info) + "\n\n```User: " + input + "```"
-
-        messages.append({"role": "user", "content": summarize_prompt})
+        # Add user input to messages temporarily (for classification)
+        messages.append({"role": "user", "content": input})
 
         # Remove all items in messages where content is not a string
         messages = [message for message in messages if isinstance(message["content"], str)]
 
-        # Show the messages in an expander
-        st.expander("Gemini Messages", expanded=False).write(messages)  
+        # Classify the query to check if it's movie-related
+        precheck_response = self.check_input_question(input)
+        
+        if "yes" in precheck_response.lower():  # Proceed if query is movie-related
+            # Get relevant information from the user input and then generate a response.
+            get_relevant_info = self.get_relevant_info(input)
 
-        # Check if use gemini is set to true
-        converted_msgs = convert_messages_format(messages)
+            # Now add the user input to the messages.
+            self.messages_to_display.append({"role": "user", "content": input})
 
-        model = genai.GenerativeModel(
+            # This is for seeing what the response from the RAG is.
+            # self.messages_to_display.append({"role": "system", "content": get_relevant_info})
+        
+            summarize_prompt = self.instruction_messages("recommend")[0]["content"] + str(get_relevant_info) + "\n\n```User: " + input + "```"
+
+            # Add relevant info and input to the messages.
+            messages.append({"role": "user", "content": summarize_prompt})
+
+            # Convert messages format to the required one for the Gemini API.
+            converted_msgs = convert_messages_format(messages)
+
+            # Initialize Gemini model.
+            model = genai.GenerativeModel(
+                model_name="gemini-1.5-flash",
+                system_instruction="You are a movie expert. Only answer movie-related questions.", 
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0,
+                )
+            )
+
+            # Start the chat and send the user message.
+            chat = model.start_chat(history=converted_msgs["history"])
+            response = chat.send_message(content=converted_msgs["content"])
+
+            # Extract the response from the model.
+            answer = response.text
+            message = {"role": "assistant", "content": answer}
+
+            # Add the assistant's response to the messages to display.
+            self.messages_to_display.append(message)
+
+        else:
+            no_movie_related_message = [
+            {"role": "system", "content": "You are a movie recommendation system. Provide a detailed response to the users question. Remember to keep the conversation focused on movies and guide the user towards related topics"},
+            {"role": "user", "content": input}
+        ]
+
+            # Convert messages format to the required one for the Gemini API.
+            converted_no_movie_msgs = convert_messages_format(no_movie_related_message)
+
+            # Initialize Gemini model for general responses.
+            model = genai.GenerativeModel(
             model_name="gemini-1.5-flash",
             system_instruction=converted_msgs["system_instruction"], 
             generation_config=genai.types.GenerationConfig(
                 temperature=0,
             )
         )
-        chat = model.start_chat(history=converted_msgs["history"])
-        response = chat.send_message(content=converted_msgs["content"])
 
-        answer = response.text
-        message = {"role": "assistant", "content": answer}
-        
-        # Add the returned value to the messages.
-        self.messages_to_display.append(message)
-   
+            # Start the chat and send the user message.
+            chat = model.start_chat(history=converted_no_movie_msgs["history"])
+            response = chat.send_message(content=converted_no_movie_msgs["content"])
+
+            # Extract the response from the model.
+            answer = response.text
+            message = {"role": "assistant", "content": answer}
+
+            # Add the assistant's response to the messages to display.
+            self.messages_to_display.append(message)
+                
     def display_content(self,content):
         """
         Displays the content of a message in streamlit. Handles plots, strings, and StreamingMessages.
@@ -148,7 +215,6 @@ class Chat:
                 try: st.write(content.get_string())
                 except:
                     raise ValueError(f"Message content of type {type(content)} not supported.")
-
 
     def display_messages(self):
         """
