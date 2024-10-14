@@ -81,12 +81,15 @@ def get_filter(query):
     json_response = llm.invoke(json_input_prompt)
     app.logger.info(f"JSON response: {json_response.content}")
     filter_json = json.loads(json_response.content)
+    user_genres = filter_json['genres']  
+    regex_pattern = '|'.join(user_genres)
 
     filter_criteria = {
         '$and': [
             {
                 'genres': {
-                    '$in': filter_json['genres']
+                    '$regex': regex_pattern,
+                    '$options': 'i'
                 }
             },
             {

@@ -166,10 +166,9 @@ class Chat:
                 myfile = genai.upload_file(image_path)  # Upload the image file
                 st.write("Image uploaded successfully!")
                 image_query = model.generate_content(
-                    [myfile, f"{input} and Extract the title from the image, translate it into English if necessary, and Return only the title text in the format: 'Attached file Title: [Title Here]'. \
-                    Remember that this title text is from the attached file for future reference?"]
+                    [myfile, "Please concisely summarize the image, only focus on things related to movies, actors or cinema"]
                 )
-                image_query = ' and '+image_query._result.candidates[0].content.parts[0].text.replace('\n', ' ')
+                image_query = ' The user has input an image containing the following: '+str(image_query._result.candidates[0].content)
 
             except Exception as e:
                 st.error(f"Image upload failed: {e}")
@@ -222,6 +221,9 @@ class Chat:
             {"role": "system", "content": "You are a movie recommendation system. Provide a detailed response to the users question. Remember to keep the conversation focused on movies and guide the user towards related topics"},
             {"role": "user", "content": input}
         ]
+
+            # Now add the user input to the messages.
+            self.messages_to_display.append({"role": "user", "content": input})
 
             # Convert messages format to the required one for the Gemini API.
             converted_no_movie_msgs = convert_messages_format(no_movie_related_message)
