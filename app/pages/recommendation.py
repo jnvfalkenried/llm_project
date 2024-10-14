@@ -6,6 +6,8 @@ import os
 from page_components import add_common_page_elements, create_chat
 from classes.chat import Chat
 
+from streamlit_js_eval import streamlit_js_eval
+
 sidebar_container = add_common_page_elements()
 # page_container = st.sidebar.container()
 # sidebar_container = st.sidebar.container()
@@ -25,3 +27,7 @@ chat = create_chat(to_hash, Chat)
 chat.get_input()
 chat.display_messages()
 chat.save_state()
+
+if st.button("New Chat"):
+    # Execute JavaScript to reload the page
+    streamlit_js_eval(js_expressions="parent.window.location.reload()")
