@@ -38,14 +38,33 @@ class Chat:
         # Set session states as attributes for easier access
         self.messages_to_display = st.session_state.messages_to_display
         self.state = st.session_state.chat_state
-    
+ 
     def clear_state(self):
         self.messages_to_display = []  # Clear the messages
-    def instruction_messages(self):
+   
+    def instruction_messages(self, mode="default"):
         """
         Sets up the instructions to the agent. Should be overridden by subclasses.
         """
-        return []
+        match mode:
+            case "default":
+                instructions = "You are a movie expert. Only answer movie related questions."
+            case "filter":
+                instructions = "Is this a movie related question? Answer with yes or no."
+            case "recommend":
+                instructions = """Please summarize each of the movies given to you at the end of the prompt in a 
+                    bullet point list as a recommendation to the user. 
+                    Each entry in the list is a separate movie. 
+                    Answer as if you are recommending the movies based on a request from the user. 
+                    Always mention the title and rating of the movies.
+                    Also briefly mention what the users said about the movie, you can find this in the "review" field.
+                    If no movies are given to you below, just say that no movies fit the users request.
+                    
+                    ´´´Movie list: ´´´"""
+            case _:
+                raise(ValueError("Invalid mode."))
+        
+        return [{"role": "system", "content": instructions}]
 
     def add_message(self, content, role="assistant", user_only=True, visible = True):
         """
@@ -110,7 +129,6 @@ class Chat:
         messages = [message for message in messages if isinstance(message["content"], str)]
 
         # Classify the query to check if it's movie-related
-        
         precheck_response = self.check_input_question(input)
         
         if "yes" in precheck_response.lower():  # Proceed if query is movie-related
@@ -121,10 +139,12 @@ class Chat:
             self.messages_to_display.append({"role": "user", "content": input})
 
             # This is for seeing what the response from the RAG is.
-            self.messages_to_display.append({"role": "system", "content": get_relevant_info})
+            # self.messages_to_display.append({"role": "system", "content": get_relevant_info})
+        
+            summarize_prompt = self.instruction_messages("recommend")[0]["content"] + str(get_relevant_info) + "\n\n```User: " + input + "```"
 
             # Add relevant info and input to the messages.
-            messages.append({"role": "user", "content": f"Here is the relevant information to answer the user's query: {get_relevant_info}\n\n```User: {input}```"})
+            messages.append({"role": "user", "content": summarize_prompt})
 
             # Convert messages format to the required one for the Gemini API.
             converted_msgs = convert_messages_format(messages)
@@ -161,7 +181,7 @@ class Chat:
             # Initialize Gemini model for general responses.
             model = genai.GenerativeModel(
             model_name="gemini-1.5-flash",
-            system_instruction="You are a movie recommendation system. Respond to the user's inquiry, guiding them toward movie-related topics.",
+            system_instruction=converted_msgs["system_instruction"], 
             generation_config=genai.types.GenerationConfig(
                 temperature=0,
             )
@@ -237,7 +257,9 @@ class Chat:
         """
         Extracts relevant information from the user input.
         """
-        # TODO: Make this more error proof!
         url = "http://" + os.getenv("VECTOR_DB_URL") + "/search"
-        response = requests.post(url, json={"query": input})
-        return response.json()
+        try:
+            response = requests.post(url, json={"query": input})
+            return response.json()
+        except:
+            return "An error occurred when calling the RAG. Please try again later."
