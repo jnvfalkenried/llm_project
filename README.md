@@ -2,7 +2,7 @@
 
 This application is a movie recommendation and review chatbot powered by Gemini 1.5 LLM. The chatbot provides detailed answers to movie-related queries and can also fetch movie recommendations and reviews from an integrated vector database. The app is built using Python, Streamlit, and a vector database for enhanced recommendations.
 
-The application is built using docker, having two different containers, one for the application itself and one for runnign the FAISS database
+The application is built using docker, having two different containers, one for the application itself and one for runnign the Chroma database
 
 
 ## Usage
