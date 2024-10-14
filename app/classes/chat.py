@@ -3,6 +3,13 @@ import google.generativeai as genai
 from itertools import groupby
 import os
 import requests
+import logging
+from PIL import Image
+import tempfile
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def convert_messages_format(messages):
     new_messages = []
@@ -81,7 +88,25 @@ class Chat:
             if len(x) > 500:
                 st.error(f"Your message is too long ({len(x)} characters). Please keep it under 500 characters.")
 
-            self.handle_input(x)
+            # self.handle_input(x)
+        uploaded_image = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"], 
+                                          label_visibility="collapsed")
+
+        image_path = None
+        if uploaded_image is not None:
+            # Save the uploaded image to a temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
+                img = Image.open(uploaded_image)
+                img.save(tmp_file, format="PNG")
+                image_path = tmp_file.name  # Get the temporary file path
+
+            # Display the uploaded image in the chat interface
+            st.image(img, caption="Uploaded Image", use_column_width=True)
+
+            # logger.info('streamlit789')
+            # logger.info(input)
+        if x:
+            self.handle_input(x, image_path)  
 
     def check_input_question(self, input):
         """
@@ -111,7 +136,7 @@ class Chat:
 
         return response.text.strip().lower()  # Return 'yes' or 'no' based on classification
 
-    def handle_input(self, input):
+    def handle_input(self, input, image_path=None):
         """
         The main function that calls the Gemini API and processes the response.
         """
@@ -128,10 +153,42 @@ class Chat:
         # Remove all items in messages where content is not a string
         messages = [message for message in messages if isinstance(message["content"], str)]
 
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction="You are a movie expert. Only answer movie-related questions.", 
+            generation_config=genai.types.GenerationConfig(
+                temperature=0,
+            )
+        )
+
+        if image_path:
+            try:
+                myfile = genai.upload_file(image_path)  # Upload the image file
+                st.write("Image uploaded successfully!")
+                image_query = model.generate_content(
+                    [myfile, f"{input} and Extract the title from the image, translate it into English if necessary, and Return only the title text in the format: 'Attached file Title: [Title Here]'. \
+                    Remember that this title text is from the attached file for future reference?"]
+                )
+                image_query = ' and '+image_query._result.candidates[0].content.parts[0].text.replace('\n', ' ')
+
+            except Exception as e:
+                st.error(f"Image upload failed: {e}")
+                return
+        else:
+            image_query = ''
+
+        # logger.info('streamlit456')
+        if input is None:
+            input = ''
+        # logger.info(input)
+
+        input = input + image_query
+
         # Classify the query to check if it's movie-related
         precheck_response = self.check_input_question(input)
         
         if "yes" in precheck_response.lower():  # Proceed if query is movie-related
+            # Initialize Gemini model.
             # Get relevant information from the user input and then generate a response.
             get_relevant_info = self.get_relevant_info(input)
 
@@ -148,15 +205,6 @@ class Chat:
 
             # Convert messages format to the required one for the Gemini API.
             converted_msgs = convert_messages_format(messages)
-
-            # Initialize Gemini model.
-            model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash",
-                system_instruction="You are a movie expert. Only answer movie-related questions.", 
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0,
-                )
-            )
 
             # Start the chat and send the user message.
             chat = model.start_chat(history=converted_msgs["history"])
@@ -181,7 +229,7 @@ class Chat:
             # Initialize Gemini model for general responses.
             model = genai.GenerativeModel(
             model_name="gemini-1.5-flash",
-            system_instruction=converted_msgs["system_instruction"], 
+            system_instruction="You are a movie expert. Only answer movie-related questions.", 
             generation_config=genai.types.GenerationConfig(
                 temperature=0,
             )
