@@ -181,7 +181,7 @@ class Chat:
             input = ''
         # logger.info(input)
 
-        input = input + image_query
+        input = input
 
         # Classify the query to check if it's movie-related
         precheck_response = self.check_input_question(input)
@@ -189,7 +189,7 @@ class Chat:
         if "yes" in precheck_response.lower():  # Proceed if query is movie-related
             # Initialize Gemini model.
             # Get relevant information from the user input and then generate a response.
-            get_relevant_info = self.get_relevant_info(input)
+            get_relevant_info = self.get_relevant_info(input + image_query)
 
             # Now add the user input to the messages.
             self.messages_to_display.append({"role": "user", "content": input})
@@ -197,7 +197,7 @@ class Chat:
             # This is for seeing what the response from the RAG is.
             # self.messages_to_display.append({"role": "system", "content": get_relevant_info})
         
-            summarize_prompt = self.instruction_messages("recommend")[0]["content"] + str(get_relevant_info) + "\n\n```User: " + input + "```"
+            summarize_prompt = self.instruction_messages("recommend")[0]["content"] + str(get_relevant_info) + "\n\n```User: " + input + image_query + "```"
 
             # Add relevant info and input to the messages.
             messages.append({"role": "user", "content": summarize_prompt})
@@ -207,10 +207,12 @@ class Chat:
 
             # Start the chat and send the user message.
             chat = model.start_chat(history=converted_msgs["history"])
-            response = chat.send_message(content=converted_msgs["content"])
+            try:
+                response = chat.send_message(content=converted_msgs["content"])
+                answer = response.text
+            except Exception as e:
+                answer = "Saftey filter triggered. Please rephrase your question."
 
-            # Extract the response from the model.
-            answer = response.text
             message = {"role": "assistant", "content": answer}
 
             # Add the assistant's response to the messages to display.
@@ -219,7 +221,7 @@ class Chat:
         else:
             no_movie_related_message = [
             {"role": "system", "content": "You are a movie recommendation system. Provide a detailed response to the users question. Remember to keep the conversation focused on movies and guide the user towards related topics"},
-            {"role": "user", "content": input}
+            {"role": "user", "content": input + image_query}
         ]
 
             # Now add the user input to the messages.
@@ -230,19 +232,21 @@ class Chat:
 
             # Initialize Gemini model for general responses.
             model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            system_instruction="You are a movie expert. Only answer movie-related questions.", 
-            generation_config=genai.types.GenerationConfig(
-                temperature=0,
+                model_name="gemini-1.5-flash",
+                system_instruction="You are a movie expert. Only answer movie-related questions.", 
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0,
             )
         )
 
             # Start the chat and send the user message.
             chat = model.start_chat(history=converted_no_movie_msgs["history"])
-            response = chat.send_message(content=converted_no_movie_msgs["content"])
+            try:
+                response = chat.send_message(content=converted_no_movie_msgs["content"])
+                answer = response.text
+            except Exception as e:
+                answer = "Saftey filter triggered. Please rephrase your question."
 
-            # Extract the response from the model.
-            answer = response.text
             message = {"role": "assistant", "content": answer}
 
             # Add the assistant's response to the messages to display.

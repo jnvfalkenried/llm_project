@@ -79,19 +79,11 @@ def get_filter(query):
                 If no type is given, please set it to ["movie", "tvSeries"].
                 User query:""" + query
     json_response = llm.invoke(json_input_prompt)
-    app.logger.info(f"JSON response: {json_response.content}")
+    # app.logger.info(f"JSON response: {json_response.content}")
     filter_json = json.loads(json_response.content)
-    user_genres = filter_json['genres']  
-    regex_pattern = '|'.join(user_genres)
 
     filter_criteria = {
         '$and': [
-            {
-                'genres': {
-                    '$regex': regex_pattern,
-                    '$options': 'i'
-                }
-            },
             {
                 'rating': {
                     '$in': [
@@ -112,19 +104,30 @@ def get_filter(query):
         ]
     }
     
-    return filter_criteria
+    return filter_criteria, filter_json
+
+def filter_genre(lst, genres):
+    """
+    Filter the list of documents by genre.
+    """
+    return [doc for doc in lst if any(genre in doc.metadata['genres'] for genre in genres)]
+    
 
 @app.route('/search', methods=['POST'])
 def search():
     data = request.json
     app.logger.info(f"Received data: {data}")
-    filter_criteria = get_filter(data['query'])
+    filter_criteria, json_response = get_filter(data['query'])
     app.logger.info(f"Filter criteria: {filter_criteria}")
     try:
         results = vector_store.similarity_search(data['query'], k=10, filter=filter_criteria)
     except Exception as e:
         app.logger.error(f"Error: {e}")
         return Response(json.dumps([]), mimetype='application/json')
+    
+    # Filter by genre
+    if 'genres' in json_response:
+        results = filter_genre(results, json_response['genres'])
     
     results_serializable = [
         {   
