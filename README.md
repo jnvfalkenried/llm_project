@@ -9,6 +9,7 @@ The application is built using docker, having two different containers, one for 
 ```
 git clone https://github.com/jnvfalkenried/llm_project.git
 cd llm_project
+echo "GOOGLE_API_KEY=<YOUR GEMINI API KEY>" > .env
 docker compose up
 ```
 
@@ -34,7 +35,8 @@ Example API response from the vector DB
         "metadata": {
             "title": "Inception",
             "genres": ["Sci-Fi", "Thriller"],
-            "rating": "8.8"
+            "rating": "8.8",
+            "type": "movie"
         },
         "content": "Title: Inception\n\nPlot: A thief who steals corporate secrets..."
     }
