@@ -11,7 +11,7 @@ from streamlit_js_eval import streamlit_js_eval
 sidebar_container = add_common_page_elements()
 # page_container = st.sidebar.container()
 # sidebar_container = st.sidebar.container()
-st.title("Gemini-like clone")
+st.title("StreamWise Chat")
 
 st.divider()
 
