@@ -59,7 +59,7 @@ The main application runs inside a docker container. It is a streamlit app, that
 The Chroma vector database stores metadata and reviews for a wide range of movies. The app queries the database to recommend similar movies based on user input. It supports similarity search by using vector embeddings of movie data.
 
 - **Port**: The vector database runs internally on port `5000` and is exposed externally on port `5001` for querying.
-- **Persistent Storage**: The database volume is mapped to the `./data` directory to ensure that data remains persistent even if the container is restarted.
+- **Persistent Storage**: The database volume is mapped to the `./db/chroma_persistence` directory to ensure that data remains persistent even if the container is restarted.
 
 Example API response from the vector DB:
 
